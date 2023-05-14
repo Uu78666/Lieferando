@@ -1,0 +1,90 @@
+async function main(params) {
+
+  // Set up Lieferando API credentials
+  const username = '<Ihr Lieferando-Benutzername>';
+  const password = '<Ihr Lieferando-Passwort>';
+  const restaurantId = '<Ihre Restaurant-ID>';
+
+  // Set up Outlook API credentials
+  const clientId = '<Ihre Outlook-Client-ID>';
+  const clientSecret = '<Ihr Outlook-Client-Secret>';
+  const tenantId = '<Ihre Azure-Tenant-ID>';
+  const userEmail = '<Ihre E-Mail-Adresse>';
+
+  // Authenticate with Lieferando API
+  const authResponse = await fetch('https://api.lieferando.de/auth/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: `username=${username}&password=${password}&grant_type=password`
+  });
+  const authData = await authResponse.json();
+  const accessToken = authData.access_token;
+
+  // Get latest order from Lieferando API
+  const orderResponse = await fetch(`https://api.lieferando.de/v2/restaurants/${restaurantId}/orders/latest`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+  const orderData = await orderResponse.json();
+
+  // Check if order is valid
+  if (orderData && orderData.orderId) {
+    // Get customer phone number
+    const phoneNumber = orderData.customer.phoneNumber;
+
+    // Authenticate with Outlook API
+    const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `grant_type=client_credentials&client_id=${clientId}&client_secret=${clientSecret}&scope=https://graph.microsoft.com/.default`
+    });
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    // Send email with customer phone number
+    const emailBody = `Neue Bestellung mit Telefonnummer: ${phoneNumber}`;
+    const emailSubject = 'Neue Lieferando-Bestellung';
+    const emailRequest = {
+      message: {
+        subject: emailSubject,
+        body: {
+          contentType: 'Text',
+          content: emailBody
+        },
+        toRecipients: [
+          {
+            emailAddress: {
+              address: userEmail
+            }
+          }
+        ]
+      },
+      saveToSentItems: true
+    };
+    const emailResponse = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(emailRequest)
+    });
+
+    // Return success message
+    return {
+      statusCode: 200,
+      body: 'Success'
+    };
+  } else {
+    // Return error message
+    return {
+      statusCode: 400,
+      body: 'Error'
+    };
+  }
+}
